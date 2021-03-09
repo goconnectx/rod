@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 
@@ -12,7 +13,7 @@ func main() {
 
 	schema := getSchema()
 
-	code := comment + utils.S(`
+	init := comment + utils.S(`
 
 		package proto
 
@@ -23,10 +24,9 @@ func main() {
 
 		// Version of cdp protocol
 		const Version = "v{{.major}}.{{.minor}}"
-	`, "major", schema.Get("version.major").Str(), "minor", schema.Get("version.minor").Str())
 
-	init := `
-		var types = map[string]reflect.Type{`
+		var types = map[string]reflect.Type{
+	`, "major", schema.Get("version.major").Str(), "minor", schema.Get("version.minor").Str())
 
 	testsCode := comment + `
 
@@ -38,6 +38,23 @@ func main() {
 	`
 
 	for _, domain := range parse(schema) {
+
+		code := comment + `
+
+			package proto
+
+			import (
+				"github.com/ysmood/gson"
+			)
+		`
+
+		code += fmt.Sprintf("/*\n\n%s\n\n", domain.name)
+
+		if domain.description != "" {
+			code += domain.description + "\n\n"
+		}
+		code += "*/\n\n"
+
 		for _, definition := range domain.definitions {
 			if definition.skip {
 				continue
@@ -54,13 +71,18 @@ func main() {
 				)
 			}
 		}
+
+		utils.E(utils.OutputFile(
+			filepath.FromSlash(
+				fmt.Sprintf("lib/proto/%s.go", toSnakeCase(domain.name))),
+			code))
 	}
 
 	init += `
 		}
 	`
 
-	utils.E(utils.OutputFile(filepath.FromSlash("lib/proto/definitions.go"), code+init))
+	utils.E(utils.OutputFile(filepath.FromSlash("lib/proto/definitions.go"), init))
 	utils.E(utils.OutputFile(filepath.FromSlash("lib/proto/definitions_test.go"), testsCode))
 
 	path := "./lib/proto"
@@ -134,10 +156,10 @@ func (d *definition) format() (code string) {
 			method := d.domain.name + "." + d.originName
 			if d.returnValue {
 				code += utils.S(`
-				// ProtoReq of the command
+				// ProtoReq name
 				func (m {{.name}}) ProtoReq() string { return "{{.method}}" }
 
-				// Call of the command, sessionID is optional.
+				// Call the request
 				func (m {{.name}}) Call(c Client) (*{{.name}}Result, error) {
 					var res {{.name}}Result
 					return &res, call(m.ProtoReq(), m, &res, c)
@@ -145,10 +167,10 @@ func (d *definition) format() (code string) {
 				`, "name", d.name, "method", method)
 			} else {
 				code += utils.S(`
-				// ProtoReq of the command
+				// ProtoReq name
 				func (m {{.name}}) ProtoReq() string { return "{{.method}}" }
 
-				// Call of the command, sessionID is optional.
+				// Call sends the request
 				func (m {{.name}}) Call(c Client) error {
 					return call(m.ProtoReq(), m, nil, c)
 				}
@@ -158,7 +180,7 @@ func (d *definition) format() (code string) {
 
 		if d.cdpType == cdpTypeEvents {
 			code += utils.S(`
-				// ProtoEvent interface
+				// ProtoEvent name
 				func (evt {{.name}}) ProtoEvent() string {
 					return "{{.event}}"
 				}

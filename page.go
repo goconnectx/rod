@@ -82,6 +82,15 @@ func (p *Page) Info() (*proto.TargetTargetInfo, error) {
 	return p.browser.pageInfo(p.TargetID)
 }
 
+// HTML of the page
+func (p *Page) HTML() (string, error) {
+	el, err := p.Element("html")
+	if err != nil {
+		return "", err
+	}
+	return el.HTML()
+}
+
 // Cookies returns the page cookies. By default it will return the cookies for current page.
 // The urls is the list of URLs for which applicable cookies will be fetched.
 func (p *Page) Cookies(urls []string) ([]*proto.NetworkCookie, error) {
@@ -121,11 +130,7 @@ func (p *Page) SetExtraHeaders(dict []string) (func(), error) {
 // If req is nil, a default user agent will be used, a typical mac chrome.
 func (p *Page) SetUserAgent(req *proto.NetworkSetUserAgentOverride) error {
 	if req == nil {
-		req = &proto.NetworkSetUserAgentOverride{
-			UserAgent:      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36",
-			AcceptLanguage: "en",
-			Platform:       "MacIntel",
-		}
+		req = devices.LaptopWithMDPIScreen.UserAgentEmulation()
 	}
 	return req.Call(p)
 }
@@ -418,7 +423,22 @@ func (p *Page) WaitOpen() func() (*Page, error) {
 	}
 }
 
-// EachEvent is similar to Browser.EachEvent, but only catches events for current page.
+// EachEvent of the specified event types, if any callback returns true the wait function will resolve,
+// The type of each callback is (? means optional):
+//
+//     func(proto.Event, proto.TargetSessionID?) bool?
+//
+// You can listen to multiple event types at the same time like:
+//
+//     browser.EachEvent(func(a *proto.A) {}, func(b *proto.B) {})
+//
+// Such as subscribe the events to know when the navigation is complete or when the page is rendered.
+// Here's an example to dismiss all dialogs/alerts on the page:
+//
+//      go page.EachEvent(func(e *proto.PageJavascriptDialogOpening) {
+//          _ = proto.PageHandleJavaScriptDialog{ Accept: false, PromptText: ""}.Call(page)
+//      })()
+//
 func (p *Page) EachEvent(callbacks ...interface{}) (wait func()) {
 	return p.browser.Context(p.ctx).eachEvent(p.SessionID, callbacks...)
 }
@@ -605,14 +625,17 @@ func (p *Page) ElementFromObject(obj *proto.RuntimeRemoteObject) (*Element, erro
 	}, nil
 }
 
-// ElementFromNode creates an Element from the node id
-func (p *Page) ElementFromNode(id proto.DOMNodeID) (*Element, error) {
-	node, err := proto.DOMResolveNode{NodeID: id}.Call(p)
+// ElementFromNode creates an Element from the node, NodeID or BackendNodeID must be specified.
+func (p *Page) ElementFromNode(node *proto.DOMNode) (*Element, error) {
+	res, err := proto.DOMResolveNode{
+		NodeID:        node.NodeID,
+		BackendNodeID: node.BackendNodeID,
+	}.Call(p)
 	if err != nil {
 		return nil, err
 	}
 
-	el, err := p.ElementFromObject(node.Object)
+	el, err := p.ElementFromObject(res.Object)
 	if err != nil {
 		return nil, err
 	}
@@ -635,14 +658,14 @@ func (p *Page) ElementFromNode(id proto.DOMNodeID) (*Element, error) {
 // ElementFromPoint creates an Element from the absolute point on the page.
 // The point should include the window scroll offset.
 func (p *Page) ElementFromPoint(x, y int) (*Element, error) {
-	p.enableNodeQuery()
-
 	node, err := proto.DOMGetNodeForLocation{X: x, Y: y}.Call(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return p.ElementFromNode(node.NodeID)
+	return p.ElementFromNode(&proto.DOMNode{
+		BackendNodeID: node.BackendNodeID,
+	})
 }
 
 // Release the remote object. Usually, you don't need to call it.
@@ -684,10 +707,4 @@ func (p *Page) Event() <-chan *Message {
 	}()
 
 	return dst
-}
-
-func (p *Page) enableNodeQuery() {
-	// TODO: I don't know why we need this, seems like a bug of chrome.
-	// We should remove it once chrome fixed this bug.
-	_, _ = proto.DOMGetDocument{}.Call(p)
 }

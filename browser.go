@@ -297,22 +297,10 @@ func (b *Browser) PageFromTarget(targetID proto.TargetTargetID) (*Page, error) {
 	// Such as proto.PageAddScriptToEvaluateOnNewDocument won't work.
 	page.EnableDomain(&proto.PageEnable{})
 
-	// If we don't enable it, it will remove remote node id whenever we disable the domain
-	// even after we re-enable it again we can't query the ids any more.
-	page.EnableDomain(&proto.DOMEnable{})
-
 	return page, nil
 }
 
-// EachEvent of the specified event types, if any callback returns true the wait function will resolve,
-// The type of each callback is (? means optional):
-//
-//     func(proto.Event, proto.TargetSessionID?) bool?
-//
-// You can listen to multiple event types at the same time like:
-//
-//     browser.EachEvent(func(a *proto.A) {}, func(b *proto.B) {})
-//
+// EachEvent is similar to Page.EachEvent, but catches events of the entire browser.
 func (b *Browser) EachEvent(callbacks ...interface{}) (wait func()) {
 	return b.eachEvent("", callbacks...)
 }

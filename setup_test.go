@@ -18,7 +18,6 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/defaults"
-	"github.com/go-rod/rod/lib/devices"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/go-rod/rod/lib/utils"
@@ -89,9 +88,7 @@ func (cp TesterPool) new() *T {
 
 	mc := newMockClient(u)
 
-	browser := rod.New().Client(mc).MustConnect().
-		MustIgnoreCertErrors(false).
-		DefaultDevice(devices.Test)
+	browser := rod.New().Client(mc).MustConnect().MustIgnoreCertErrors(false)
 
 	page := browser.MustPage("")
 
@@ -137,7 +134,9 @@ func (t T) blank() string {
 	return t.srcFile("./fixtures/blank.html")
 }
 
-// get abs file path from fixtures folder, return sample "file:///a/b/click.html"
+// Get abs file path from fixtures folder, such as "file:///a/b/click.html".
+// Usually the path can be used for html src attribute like:
+//     <img src="file:///a/b">
 func (t T) srcFile(path string) string {
 	t.Helper()
 	f, err := filepath.Abs(slash(path))
@@ -258,9 +257,10 @@ func (mc *MockClient) resetCall() {
 	mc.call = nil
 }
 
-// Use it to find out which cdp call to intercept. Put a special like log.Println("*****") after the cdp call you want to intercept.
+// Use it to find out which cdp call to intercept. Put a print like log.Println("*****") after the cdp call you want to intercept.
 // The output of the test should has something like:
 //
+//     [stubCounter] begin
 //     [stubCounter] 1, proto.DOMResolveNode{}
 //     [stubCounter] 1, proto.RuntimeCallFunctionOn{}
 //     [stubCounter] 2, proto.RuntimeCallFunctionOn{}
@@ -270,6 +270,8 @@ func (mc *MockClient) resetCall() {
 func (mc *MockClient) stubCounter() {
 	l := sync.Mutex{}
 	mCount := map[string]int{}
+
+	fmt.Fprintln(os.Stdout, "[stubCounter] begin")
 
 	mc.setCall(func(ctx context.Context, sessionID, method string, params interface{}) ([]byte, error) {
 		l.Lock()

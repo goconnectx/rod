@@ -69,6 +69,7 @@ func (el *Element) ScrollIntoView() error {
 }
 
 // Hover the mouse over the center of the element.
+// It will try to scroll to the element and wait until it's interactable.
 func (el *Element) Hover() error {
 	err := el.ScrollIntoView()
 	if err != nil {
@@ -89,6 +90,8 @@ func (el *Element) Hover() error {
 }
 
 // Click will press then release the button just like a human.
+// It will try to scroll to the element, hover the mouse over it,
+// wait until the it's interactable and enabled first.
 func (el *Element) Click(button proto.InputMouseButton) error {
 	err := el.Hover()
 	if err != nil {
@@ -105,7 +108,8 @@ func (el *Element) Click(button proto.InputMouseButton) error {
 	return el.page.Mouse.Click(button)
 }
 
-// Tap the button just like a human.
+// Tap will scroll to the button and tap it just like a human.
+// It will try to scroll to the element, wait until the it's interactable and enabled first.
 func (el *Element) Tap() error {
 	err := el.ScrollIntoView()
 	if err != nil {
@@ -194,7 +198,8 @@ func (el *Element) Shape() (*proto.DOMGetContentQuadsResult, error) {
 	return proto.DOMGetContentQuads{ObjectID: el.id()}.Call(el)
 }
 
-// Press is similar with Keyboard.Press. It will focus on the element before pressing.
+// Press is similar with Keyboard.Press.
+// It will try to scroll to the element and focus on it first.
 func (el *Element) Press(keys ...rune) error {
 	err := el.Focus()
 	if err != nil {
@@ -204,7 +209,8 @@ func (el *Element) Press(keys ...rune) error {
 	return el.page.Keyboard.Press(keys...)
 }
 
-// SelectText selects the text that matches the regular expression
+// SelectText selects the text that matches the regular expression.
+// It will try to scroll to the element and focus on it first.
 func (el *Element) SelectText(regex string) error {
 	err := el.Focus()
 	if err != nil {
@@ -219,6 +225,7 @@ func (el *Element) SelectText(regex string) error {
 }
 
 // SelectAllText selects all text
+// It will try to scroll to the element and focus on it first.
 func (el *Element) SelectAllText() error {
 	err := el.Focus()
 	if err != nil {
@@ -233,9 +240,15 @@ func (el *Element) SelectAllText() error {
 }
 
 // Input focuses on the element and input text to it.
+// It will scroll to the element, wait until it's visible, enabled and writable first.
 // To empty the input you can use something like el.SelectAllText().MustInput("")
 func (el *Element) Input(text string) error {
-	err := el.WaitVisible()
+	err := el.Focus()
+	if err != nil {
+		return err
+	}
+
+	err = el.WaitVisible()
 	if err != nil {
 		return err
 	}
@@ -246,11 +259,6 @@ func (el *Element) Input(text string) error {
 	}
 
 	err = el.WaitWritable()
-	if err != nil {
-		return err
-	}
-
-	err = el.Focus()
 	if err != nil {
 		return err
 	}
@@ -267,8 +275,15 @@ func (el *Element) Input(text string) error {
 }
 
 // InputTime focuses on the element and input time to it.
+// It will scroll to the element, wait until it's visible, enabled and writable first.
+// It will wait until the element is visible, enabled and writable.
 func (el *Element) InputTime(t time.Time) error {
-	err := el.WaitVisible()
+	err := el.Focus()
+	if err != nil {
+		return err
+	}
+
+	err = el.WaitVisible()
 	if err != nil {
 		return err
 	}
@@ -279,11 +294,6 @@ func (el *Element) InputTime(t time.Time) error {
 	}
 
 	err = el.WaitWritable()
-	if err != nil {
-		return err
-	}
-
-	err = el.Focus()
 	if err != nil {
 		return err
 	}
@@ -301,8 +311,14 @@ func (el *Element) Blur() error {
 }
 
 // Select the children option elements that match the selectors.
+// It will scroll to the element, wait until it's visible first.
 func (el *Element) Select(selectors []string, selected bool, t SelectorType) error {
-	err := el.WaitVisible()
+	err := el.Focus()
+	if err != nil {
+		return err
+	}
+
+	err = el.WaitVisible()
 	if err != nil {
 		return err
 	}
@@ -370,23 +386,18 @@ func (el *Element) SetFiles(paths []string) error {
 	return err
 }
 
-// Describe the current element
+// Describe the current element. The depth is the maximum depth at which children should be retrieved, defaults to 1,
+// use -1 for the entire subtree or provide an integer larger than 0.
+// The pierce decides whether or not iframes and shadow roots should be traversed when returning the subtree.
+// The returned proto.DOMNode.NodeID will always be empty, because NodeID is not stable (when proto.DOMDocumentUpdated
+// is fired all NodeID on the page will be reassigned to another value)
+// we don't recommend using the NodeID, instead, use the BackendNodeID to identify the element.
 func (el *Element) Describe(depth int, pierce bool) (*proto.DOMNode, error) {
 	val, err := proto.DOMDescribeNode{ObjectID: el.id(), Depth: int(depth), Pierce: pierce}.Call(el)
 	if err != nil {
 		return nil, err
 	}
 	return val.Node, nil
-}
-
-// NodeID of the node
-func (el *Element) NodeID() (proto.DOMNodeID, error) {
-	el.page.enableNodeQuery()
-	node, err := proto.DOMRequestNode{ObjectID: el.id()}.Call(el)
-	if err != nil {
-		return 0, err
-	}
-	return node.NodeID, nil
 }
 
 // ShadowRoot returns the shadow root of this element
@@ -443,11 +454,11 @@ func (el *Element) Text() (string, error) {
 
 // HTML of the element
 func (el *Element) HTML() (string, error) {
-	str, err := el.Eval(`this.outerHTML`)
+	res, err := proto.DOMGetOuterHTML{ObjectID: el.Object.ObjectID}.Call(el)
 	if err != nil {
 		return "", err
 	}
-	return str.Value.String(), nil
+	return res.OuterHTML, nil
 }
 
 // Visible returns true if the element is visible on the page

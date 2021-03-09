@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
@@ -234,13 +235,11 @@ func Example_page_pdf() {
 	// simple version
 	page.MustPDF("my.pdf")
 
-	// customization version
+	// customized version
 	pdf, _ := page.PDF(&proto.PagePrintToPDF{
-		PaperWidth:              8.5,
-		PaperHeight:             11,
-		PageRanges:              "1-3",
-		IgnoreInvalidPageRanges: false,
-		DisplayHeaderFooter:     true,
+		PaperWidth:  8.5,
+		PaperHeight: 11,
+		PageRanges:  "1-3",
 	})
 	_ = utils.OutputFile("my.pdf", pdf)
 }
@@ -528,16 +527,19 @@ func Example_states() {
 	// true
 }
 
-// It's a common practice to concurrently use a pool of resources in Go, it's not special for rod.
+// We can use PagePool to concurrently control and reuse pages.
 func ExamplePage_pool() {
 	browser := rod.New().MustConnect()
 	defer browser.MustClose()
 
-	// We create a pool that will hold at most 3 pages
+	// We create a pool that will hold at most 3 pages which means the max concurrency is 3
 	pool := rod.NewPagePool(3)
 
-	// Create a page if needed. If you want pages to share cookies with each remove the MustIncognito()
-	create := func() *rod.Page { return browser.MustIncognito().MustPage("") }
+	// Create a page if needed
+	create := func() *rod.Page {
+		// We use MustIncognito to isolate pages with each other
+		return browser.MustIncognito().MustPage("")
+	}
 
 	yourJob := func() {
 		page := pool.Get(create)
@@ -584,4 +586,18 @@ func Example_load_extension() {
 
 	// Skip
 	// Output: ok
+}
+
+func Example_log_cdp_traffic() {
+	cdp := cdp.New(launcher.New().MustLaunch()).
+
+		// Here we can customize how to log the requests, responses, and events transferred between Rod and the browser.
+		Logger(utils.Log(func(msg ...interface{}) {
+			// Such as use some fancy lib like github.com/davecgh/go-spew/spew to make the output more readable:
+			//     spew.Println(msg)
+			// Here we use %#v as an example.
+			fmt.Printf("%#v\n", msg)
+		}))
+
+	rod.New().Client(cdp).MustConnect().MustPage("http://example.com")
 }

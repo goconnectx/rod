@@ -113,8 +113,16 @@ func (t T) SetUserAgent() {
 	t.newPage("").MustSetUserAgent(nil).MustNavigate(s.URL())
 	wg.Wait()
 
-	t.Eq("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36", ua)
-	t.Eq("en", lang)
+	t.Eq(ua, "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36")
+	t.Eq(lang, "en")
+}
+
+func (t T) PageHTML() {
+	p := t.page.MustNavigate(t.srcFile("fixtures/click.html")).MustWaitLoad()
+	t.Has(p.MustHTML(), "<head>")
+
+	t.mc.stubErr(1, proto.RuntimeCallFunctionOn{})
+	t.Err(p.HTML())
 }
 
 func (t T) PageCloseCancel() {
@@ -395,7 +403,10 @@ func (t T) PageEvent() {
 	utils.Sleep(0.1)
 	ctx.Cancel()
 
-	p.Event()
+	go func() {
+		for range p.Event() {
+		}
+	}()
 	p.MustClose()
 }
 
@@ -528,8 +539,8 @@ func (t T) PageScreenshot() {
 	data := p.MustScreenshot(f)
 	img, err := png.Decode(bytes.NewBuffer(data))
 	t.E(err)
-	t.Eq(800, img.Bounds().Dx())
-	t.Eq(600, img.Bounds().Dy())
+	t.Eq(1280, img.Bounds().Dx())
+	t.Eq(800, img.Bounds().Dy())
 	t.Nil(os.Stat(f))
 
 	p.MustScreenshot("")
@@ -552,8 +563,8 @@ func (t T) ScreenshotFullPage() {
 
 	// after the full page screenshot the window size should be the same as before
 	res = p.MustEval(`({w: innerWidth, h: innerHeight})`)
-	t.Eq(800, res.Get("w").Int())
-	t.Eq(600, res.Get("h").Int())
+	t.Eq(1280, res.Get("w").Int())
+	t.Eq(800, res.Get("h").Int())
 
 	p.MustScreenshotFullPage("")
 
